@@ -11,13 +11,13 @@
 			* {
 				margin:0;
 				padding:0;
-				font-kerning:none;
 				outline:none;
 			}
 			
 			body {
 				-webkit-tap-highlight-color: transparent;
 				background:#808080;
+				overflow:hidden;
 			}
 			
 		</style>
@@ -97,7 +97,7 @@
 				Object.assign(canvas.style,{"vertical-align":"top","outline":"1px solid #0FF"});
 				
 				const div = document.createElement("div");
-				Object.assign(div.style,{"display":"flex","width":"100vw","height":"100dvh"});
+				Object.assign(div.style,{"display":"flex","width":"100dvw","height":"100dvh"});
 				div.appendChild(canvas);
 				
 				const gl = canvas.getContext("webgl2",{antialias:true});
