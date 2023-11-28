@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<meta name="robots" content="noindex,nofollow">
+		<meta name="viewport" content="width=device-width,user-scalable=no,minimum-scale=1.0,maximum-scale=1.0">
+		<title>20231128</title>
+		<link rel="icon" href="data:;base64,=">
+		<style>
+			
+			* {
+				margin:0;
+				padding:0;
+				font-kerning:none;
+				outline:none;
+			}
+			
+			body {
+				-webkit-tap-highlight-color: transparent;
+				background:#808080;
+			}
+			
+		</style>
+		<script src="decodePNG.js"></script>
+	</head>
+	<body>
+		<script>
+			
+			const GUIDE = true;
+			
+			const bar = [
+				document.createElement("div"),
+				document.createElement("div")
+			];
+			const style = {position:"absolute",background:"#0FF"};
+			Object.assign(bar[0].style,style);
+			Object.assign(bar[0].style,{top:0,left:"50%"});
+			Object.assign(bar[0].style,{width:"1px",height:"100dvh"});
+			bar[0].style.zIndex = 128;
+			Object.assign(bar[1].style,style);
+			Object.assign(bar[1].style,{top:"50%",left:0});
+			Object.assign(bar[1].style,{width:"100dvw",height:"1px"});
+			bar[1].style.zIndex = 129;
+			
+			if(GUIDE) {
+				document.body.appendChild(bar[0]);
+				document.body.appendChild(bar[1]);
+			}
+			
+		</script>
+		<script src="./twgl.min.js"></script>
+		<script type="module">
+			
+			class U8 {
+				constructor(len) {
+					this.length = len;
+					this.bytes = Module._malloc(len);
+					this.buffer = new Uint8Array(Module.HEAPU8.buffer,this.bytes,len);
+				}
+				cleanup() {
+					Module._free(this.bytes);
+					this.buffer = null;
+				}
+			};
+			
+			fetch("./TM.png").then((response)=>{
+				if(response.ok) {
+					return response.arrayBuffer();
+				}
+				else {
+					throw new Error(response.status);
+				}
+			}).then((arrayBuffer)=>{
+				
+				const TOTAL_FRAMES = 90;
+				const MATRIX_WIDTH = (4*4);
+				const MATRIX_HEIGHT = 1;
+				const MATRIX_SIZE = (MATRIX_WIDTH*MATRIX_HEIGHT)<<2;
+				
+				const decodePNG = Module.cwrap("decodePNG","number",["number","number","number","number","number","number"]);
+				const bytes = new Uint8Array(arrayBuffer);
+				const PNG = new U8(bytes.length);
+				PNG.buffer.set(bytes);
+				const result = new U8(MATRIX_SIZE*TOTAL_FRAMES);
+				decodePNG(result.buffer.byteOffset,MATRIX_WIDTH*TOTAL_FRAMES,MATRIX_HEIGHT,PNG.buffer.byteOffset,PNG.buffer.length);
+				
+				const TM = new Float32Array(result.buffer.buffer.slice(result.buffer.byteOffset,result.buffer.byteOffset+MATRIX_SIZE*TOTAL_FRAMES));
+				
+				let frame = 0;
+								
+				const width = 1920;
+				const height = 1080;
+				const aspect = height/width;
+				
+				const canvas = document.createElement("canvas");
+				Object.assign(canvas,{width:width,height:height});
+				Object.assign(canvas.style,{"vertical-align":"top","outline":"1px solid #0FF"});
+				
+				const div = document.createElement("div");
+				Object.assign(div.style,{"display":"flex","width":"100vw","height":"100dvh"});
+				div.appendChild(canvas);
+				
+				const gl = canvas.getContext("webgl2",{antialias:true});
+				const vs = `
+attribute vec3 position;
+uniform mat4 PM;
+uniform mat4 TM;
+void main() {
+	gl_Position = PM*TM*vec4(position+vec3(0.0,1.5,-4.0),1.0);
+}`;
+				const fs = `
+precision mediump float;
+void main() {
+	gl_FragColor = vec4(1.0,1.0,1.0,1.0);
+}`;
+				const program = twgl.createProgramFromSources(gl,[vs,fs]);
+				if(program) {
+					
+					const programInfo = twgl.createProgramInfoFromProgram(gl,program);
+					const bufferInfo = twgl.createBufferInfoFromArrays(gl,{
+						position:{numComponents:3,data:[
+							-1.0,-1.0*aspect,0.0,
+							 1.0,-1.0*aspect,0.0,
+							 1.0, 1.0*aspect,0.0,
+							-1.0, 1.0*aspect,0.0,
+						]},
+						indices: {numComponents:3,data:[
+							0,1,2,
+							0,2,3
+						]}
+					});
+					
+					const fov = 60;
+					const near = 0.01;
+					const far = 1000.0;
+					
+					const y = 1.0/Math.tan((fov*0.5)*(Math.PI/180.0));
+					const x = y*aspect;
+					
+					const uniforms = {
+						PM:[
+							x,0,0,0,
+							0,y,0,0,0,
+							0,-((far+near)/(far-near)),-1,
+							0,0,-((2.0*far*near)/(far-near)),0
+						],
+						TM:TM.slice(frame*MATRIX_WIDTH,frame*MATRIX_WIDTH+MATRIX_WIDTH)
+					};
+					
+					const draw = ()=>{
+						
+						uniforms.TM = TM.slice(frame*MATRIX_WIDTH,frame*MATRIX_WIDTH+MATRIX_WIDTH);
+						
+						gl.viewport(0,0,width,height);
+						gl.clearColor(0,0,0,0);
+						gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+						gl.useProgram(program);
+						twgl.setBuffersAndAttributes(gl,programInfo,bufferInfo);
+						twgl.setUniforms(programInfo,uniforms);
+						gl.drawElements(gl.TRIANGLES,bufferInfo.numElements,gl.UNSIGNED_SHORT,0);
+						
+						frame++;
+						if(frame>=TOTAL_FRAMES) frame=0;
+					};
+					setInterval(draw,1000.0/30.0);
+				}
+
+				const resize = (e)=>{
+					const sx = window.innerWidth/width;
+					const sy = window.innerHeight/height;
+					if(sx<sy) {
+						Object.assign(canvas.style,{"width":"100dvw","height":"auto","margin":"auto 0"});
+					}
+					else {
+						Object.assign(canvas.style,{"width":"auto","height":"100dvh","margin":"0 auto"});
+					}
+				}
+				let tid = 0;
+				window.addEventListener("resize",(e)=>{
+					if(tid) clearTimeout(tid);
+					tid = setTimeout((e)=>resize(),15);
+				});
+				resize();
+				document.body.appendChild(div);
+				
+			}).catch((e)=>{
+				console.log(e);
+			});
+			
+		</script>
+	</body>
+</html>
